@@ -5,6 +5,28 @@ const {mkdtempSync, rmSync} = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+// Retain the earliest browser diagnostics as well as the tail: Chrome crash stacks
+// frequently push the real first error out of a tail-only log buffer.
+function boundedCollector(headLimit = 8192, tailLimit = 8192) {
+  let head = '';
+  let tail = '';
+  let totalBytes = 0;
+  return {
+    push(chunk) {
+      const value = chunk.toString('utf8');
+      totalBytes += Buffer.byteLength(chunk);
+      if (head.length < headLimit) head += value.slice(0, headLimit - head.length);
+      tail = (tail + value).slice(-tailLimit);
+    },
+    format() {
+      if (totalBytes === 0) return '(no stderr output)';
+      if (totalBytes <= head.length) return head;
+      // Slight overlap is harmless; never print an unbounded stream.
+      return `FIRST STDERR (${head.length} chars):\n${head}\nLAST STDERR (${tail.length} chars):\n${tail}\nTOTAL STDERR: ${totalBytes} bytes`;
+    }
+  };
+}
+
 const candidates = [process.env.CI_BROWSER, 'chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable'].filter(Boolean);
 function browserCommand() {
   for (const candidate of candidates) {
@@ -29,15 +51,15 @@ async function main() {
     const run = await new Promise((resolve, reject) => {
       const child = cp.spawn(cmd, args, {stdio: ['ignore', 'pipe', 'pipe']});
       let stdout = '';
-      let stderr = '';
+      const stderr = boundedCollector();
       const timer = setTimeout(() => child.kill('SIGKILL'), 30000);
       child.stdout.on('data', chunk => { stdout = (stdout + chunk.toString()).slice(-2 * 1024 * 1024); });
-      child.stderr.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-4000); });
+      child.stderr.on('data', chunk => stderr.push(chunk));
       child.once('error', error => { clearTimeout(timer); reject(error); });
-      child.once('close', (status, signal) => { clearTimeout(timer); resolve({status, signal, stdout, stderr}); });
+      child.once('close', (status, signal) => { clearTimeout(timer); resolve({status, signal, stdout, stderr: stderr.format()}); });
     });
     if (run.status !== 0 || !run.stdout.includes('Synthetic CI fixture ready')) {
-      throw new Error(`Browser fixture failed: status=${run.status}, signal=${run.signal}, stderr=${run.stderr.slice(-500)}`);
+      throw new Error(`Browser fixture failed: status=${run.status}, signal=${run.signal}, stderr=\n${run.stderr}`);
     }
     console.log(`PASS: Chromium rendered isolated synthetic fixture using ${cmd}`);
   } finally {
@@ -45,4 +67,7 @@ async function main() {
     await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
   }
 }
-main().catch(err => {console.error(err.message); process.exitCode = 1;});
+if (require.main === module) {
+  main().catch(err => {console.error(err.message); process.exitCode = 1;});
+}
+module.exports = {boundedCollector};

@@ -25,3 +25,22 @@ test('unknown route and unsupported method are safely rejected', async () => {
     assert.equal((await fetch(base + '/', {method: 'HEAD'})).status, 200);
   });
 });
+
+const {boundedCollector} = require('../scripts/browser-test');
+test('browser diagnostics preserve first and last errors after a large crash stack', () => {
+  const capture = boundedCollector(16, 16);
+  capture.push(Buffer.from('FIRST_ERROR: bad'));
+  capture.push(Buffer.from('x'.repeat(20000)));
+  capture.push(Buffer.from('LAST_STACK_END!'));
+  const output = capture.format();
+  assert.match(output, /FIRST_ERROR/);
+  assert.match(output, /LAST_STACK_END!/);
+  assert.ok(output.length < 300);
+  assert.match(output, /TOTAL STDERR: 20031 bytes/);
+});
+test('browser diagnostics handle empty and short stderr safely', () => {
+  const capture = boundedCollector(32, 32);
+  assert.equal(capture.format(), '(no stderr output)');
+  capture.push(Buffer.from('startup failure'));
+  assert.equal(capture.format(), 'startup failure');
+});
