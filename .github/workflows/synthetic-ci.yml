@@ -1,0 +1,41 @@
+name: Public-safe synthetic CI - no deployment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: synthetic-manual-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  synthetic-acceptance:
+    name: Independent Node, SQL, browser and PWA synthetic checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      CI: 'true'
+      NODE_ENV: test
+    steps:
+      - name: Checkout public-safe synthetic files only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 immutable commit
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Reject unexpected tracked files and accidental private-source copies
+        run: |
+          python3 -B scripts/allowlist.py
+          python3 -B scripts/security-scan.py
+      - name: Confirm local runner prerequisites
+        run: |
+          node --version
+          python3 --version
+          command -v google-chrome || command -v chromium || command -v chromium-browser
+      - name: Synthetic Node and PWA contract tests
+        run: node --test tests/*.test.js
+      - name: Disposable in-memory SQL tests
+        run: python3 -B tests/database_test.py
+      - name: Headless browser only against synthetic localhost
+        run: node scripts/browser-test.js
+      - name: Cross-platform tooling availability (no native build claim)
+        run: node scripts/tooling-report.js

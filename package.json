@@ -1,0 +1,17 @@
+{
+  "name": "synthetic-public-ci",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Independent synthetic public CI only; not application acceptance",
+  "type": "commonjs",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "start": "node scripts/server.js",
+    "test:node": "node --test tests/node.test.js",
+    "test:pwa": "node --test tests/pwa.test.js",
+    "test:database": "python3 -B tests/database_test.py",
+    "test:browser": "node scripts/browser-test.js",
+    "test:tooling": "node scripts/tooling-report.js",
+    "test": "bash scripts/test-all.sh"
+  }
+}
