@@ -9,7 +9,7 @@ concurrency:
 jobs:
   synthetic-acceptance:
     name: Independent Node, SQL, browser and PWA synthetic checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions:
       contents: read
